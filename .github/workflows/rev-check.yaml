@@ -31,7 +31,7 @@ jobs:
         with:
           path: package
           # change the repo below to yours
-          repository: mitchelloharawild/distributional
+          repository: tidyverts/feasts
           # ref: master
 
       - name: Clean up .Renviron
