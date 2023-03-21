@@ -1,16 +1,27 @@
 on:
-  pull_request:
+  push:
+    branches: [ main ]
+  # Manual trigger to check a package via RStudio's cloud
   workflow_dispatch:
-  # schedule:
-  #   - cron: '0 6 * * * '
+    inputs:
+      pkg_repo:
+        description: 'Github repo of the form user/repo'
+        required: false
+        type: string
+      pkg_ref:
+        description: 'Branch, tag, or SHA'
+        required: false
+        type: string
+  schedule:
+    - cron: '0 7 * * * '
 
-name: rev-check
+name: cloud-check
 
 jobs:
-  rev-check:
+  cloud-check:
     runs-on: ${{ matrix.config.os }}
 
-    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+    name: Check ${{ github.event.inputs.pkg_repo }}
 
     strategy:
       fail-fast: false
@@ -26,11 +37,11 @@ jobs:
 
       - name: Checkout your package
         uses: actions/checkout@v2
+        if: github.event.inputs.pkg_repo != ''
         with:
           path: package
-          # change the repo below to yours
-          repository: mitchelloharawild/distributional
-          # ref: master
+          repository: ${{ github.event.inputs.pkg_repo }}
+          ref: ${{ github.event.inputs.pkg_ref }}
 
       - name: Clean up .Renviron
         run: |
@@ -46,28 +57,18 @@ jobs:
 
       - uses: r-lib/actions/setup-pandoc@HEAD
 
-      - name: Query dependencies
-        run: |
-          Rscript R/deps.R
-
       - name: Cache R packages
-        if: runner.os != 'Windows'
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-${{ hashFiles('.github/versions.csv') }}
-          restore-keys: ${{ runner.os }}-
+          key: ${{ runner.os }}-cloud-${{ github.run_id }}
+          restore-keys: ${{ runner.os }}-cloud-
 
-      - name: Install system dependencies
-        if: runner.os == 'macOS'
+      - name: Check on cloud
+        env:
+          RSTUDIO_CLOUD_REVDEP_KEY: ${{ secrets.RSTUDIO_CLOUD_REVDEP_KEY }}
         run: |
-          brew install --cask xquartz
-          sh install-sysreqs.sh || true
-
-      - name: Check reverse dependencies
-        run: |
-          Rscript R/setup.R
-          Rscript R/revcheck.R
+          Rscript R/cloud.R ${{ github.event.inputs.pkg_repo }}
 
       - name: Upload check results
         uses: actions/upload-artifact@main
@@ -76,9 +77,4 @@ jobs:
           name: ${{ runner.os }}-rev-check-results
           if-no-files-found: ignore
           path: |
-            00check_diffs.html
-            latex.txt
-            recheck
-            recheck2
-            *.Rcheck
-            *.Rcheck2
+            package/revdep
